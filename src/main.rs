@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use local_ip_address::local_ip;
 use std::process::Command;
+use std::thread;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -71,16 +72,37 @@ fn main() -> Result<()> {
     
     // Set WiFi proxy
     println!("Setting WiFi proxy...");
+
+    // Clear existing proxy settings to ensure new settings take effect
+    println!("Clearing existing proxy settings...");
+    let clear_proxy = Command::new("adb")
+        .args(["shell", "settings", "put", "global", "http_proxy", ":0"])
+        .output()
+        .context("Failed to clear existing HTTP proxy")?;
+
+    if !clear_proxy.status.success() {
+        let error = String::from_utf8_lossy(&clear_proxy.stderr);
+        println!("Warning: Failed to clear existing proxy: {}", error);
+    }
+
+    // Wait for a short period to ensure the clearing operation is completed
+    thread::sleep(std::time::Duration::from_millis(500));
+
+    // Set new proxy
+    println!("Setting new proxy to {}:{}", ip, port);
     let set_proxy = Command::new("adb")
         .args(["shell", "settings", "put", "global", "http_proxy", &format!("{}:{}", ip, port)])
         .output()
         .context("Failed to set HTTP proxy")?;
-    
+
     if !set_proxy.status.success() {
         let error = String::from_utf8_lossy(&set_proxy.stderr);
         anyhow::bail!("Failed to set proxy: {}", error);
     }
-    
+
+    // Wait for a short period to ensure the setting operation is completed
+    thread::sleep(std::time::Duration::from_millis(500));
+
     // Verify proxy settings
     println!("Verifying proxy settings...");
     let verify_proxy = Command::new("adb")
