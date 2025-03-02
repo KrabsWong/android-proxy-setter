@@ -26,7 +26,7 @@ The compiled executable is located at `target/release/android_proxy_setter`.
 ### Basic Usage
 
 ```bash
-# Use the default port 8083
+# Use the default port 8888
 ./target/release/android_proxy_setter
 
 # Specify the port
@@ -35,7 +35,7 @@ The compiled executable is located at `target/release/android_proxy_setter`.
 
 ### Command Line Arguments
 
-- `-p, --port <PORT>`: Set the proxy port (default is 8083)
+- `-p, --port <PORT>`: Set the proxy port (default is 8888)
 - `-i, --ip <IP>`: Manually specify the IP address (default is to automatically get the local IP)
 - `-h, --help`: Display help information
 - `-V, --version`: Display version information
