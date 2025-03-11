@@ -8,6 +8,10 @@ This is a simple command-line tool to set the network proxy of an Android device
 - ADB installed and added to system PATH
 - Android device connected to the computer with USB debugging enabled
 
+<img width="500" alt="List devices and select action" src="https://github.com/user-attachments/assets/1342d15d-d7bb-4597-ac55-14b757fbfd0a" />
+
+<img width="500" alt="Set global http proxy and get the response" src="https://github.com/user-attachments/assets/30a109d7-3c54-437f-b3de-ae55cc6d66cc" />
+
 ## Installation
 
 ```bash
