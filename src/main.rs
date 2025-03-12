@@ -91,9 +91,10 @@ fn main() -> Result<()> {
         println!("\nPlease select an option:");
         println!("1. {}", "Set global proxy".green());
         println!("2. {}", "Clear global proxy".red());
-        println!("3. {}", "Exit".yellow());
+        println!("3. {}", "View current proxy settings".blue());
+        println!("4. {}", "Exit".yellow());
         
-        print!("\nEnter your choice (1-3): ");
+        print!("\nEnter your choice (1-4): ");
         io::stdout().flush()?;
         
         let mut choice = String::new();
@@ -102,7 +103,8 @@ fn main() -> Result<()> {
         match choice.trim() {
             "1" => set_proxy(&args)?,
             "2" => clear_proxy()?,
-            "3" => {
+            "3" => view_proxy()?,
+            "4" => {
                 println!("{}", "Exiting...".yellow());
                 return Ok(());
             }
@@ -217,6 +219,43 @@ fn clear_proxy() -> Result<()> {
     } else {
         println!("{}", "⚠️ Unable to verify proxy settings, please verify manually".yellow().bold());
     }
+    
+    Ok(())
+}
+
+fn view_proxy() -> Result<()> {
+    println!("{}", "Checking current Android device proxy settings...".blue());
+    
+    let proxy_settings = Command::new("adb")
+        .args(["shell", "settings", "get", "global", "http_proxy"])
+        .output()
+        .context("Failed to get HTTP proxy settings")?;
+
+    if !proxy_settings.status.success() {
+        let error = String::from_utf8_lossy(&proxy_settings.stderr);
+        anyhow::bail!("Failed to get proxy settings: {}", error);
+    }
+
+    let proxy_setting = String::from_utf8_lossy(&proxy_settings.stdout).trim().to_string();
+    
+    println!("\n{}", "=== Current Proxy Settings ===".blue().bold());
+    if proxy_setting.is_empty() || proxy_setting == ":0" {
+        println!("Global HTTP Proxy: {}", "Not set".red());
+    } else {
+        // Split the proxy setting into IP and port
+        if let Some((ip, port)) = proxy_setting.split_once(':') {
+            println!("Global HTTP Proxy: {}", proxy_setting.green());
+            println!("IP Address: {}", ip.green());
+            println!("Port: {}", port.green());
+        } else {
+            println!("Global HTTP Proxy: {}", proxy_setting.green());
+            println!("(Unable to parse IP and port separately)");
+        }
+    }
+    
+    println!("\nPress Enter to continue...");
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
     
     Ok(())
 }
