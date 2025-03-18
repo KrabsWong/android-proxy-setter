@@ -8,9 +8,12 @@ This is a tool to set the network proxy of an Android device connected to the co
 - ADB installed and added to system PATH
 - Android device connected to the computer with USB debugging enabled
 
-<img width="500" alt="List devices and select action" src="https://github.com/user-attachments/assets/1342d15d-d7bb-4597-ac55-14b757fbfd0a" />
+<img width="500" alt="List devices and select action" src="https://github.com/user-attachments/assets/e1ec8d15-a354-47b4-84f8-47c6204349a1" />
 
-<img width="500" alt="Set global http proxy and get the response" src="https://github.com/user-attachments/assets/30a109d7-3c54-437f-b3de-ae55cc6d66cc" />
+<img width="500" alt="Set global http proxy and get the response" src="https://github.com/user-attachments/assets/29f82b92-a2e8-47f4-b167-a1b8bd8f8034" />
+
+<img width="500" alt="Gui mode" src="https://github.com/user-attachments/assets/577c5016-e1eb-4c17-ab45-285a5219f052" />
+
 
 ## Installation
 
