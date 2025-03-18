@@ -10,7 +10,11 @@ This is a tool to set the network proxy of an Android device connected to the co
 
 <img width="500" alt="List devices and select action" src="https://github.com/user-attachments/assets/e1ec8d15-a354-47b4-84f8-47c6204349a1" />
 
+<br />
+
 <img width="500" alt="Set global http proxy and get the response" src="https://github.com/user-attachments/assets/29f82b92-a2e8-47f4-b167-a1b8bd8f8034" />
+
+<br />
 
 <img width="500" alt="Gui mode" src="https://github.com/user-attachments/assets/577c5016-e1eb-4c17-ab45-285a5219f052" />
 
