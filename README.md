@@ -1,6 +1,6 @@
 # Android Proxy Setting Tool
 
-This is a command-line tool to set the network proxy of an Android device connected to the computer to the local IP and specified port. It provides both interactive and direct command-line options for managing proxy settings.
+This is a tool to set the network proxy of an Android device connected to the computer to the local IP and specified port. It provides both interactive command-line interface, direct command-line options, and a graphical user interface (GUI) with system tray icon for managing proxy settings.
 
 ## Prerequisites
 
@@ -27,7 +27,9 @@ The compiled executable is located at `target/release/android_proxy_setter`.
 
 ## Usage
 
-### Interactive Mode
+The tool offers three modes of operation:
+
+### 1. Interactive CLI Mode
 
 By default, the tool runs in interactive mode, providing a menu with the following options:
 
@@ -41,12 +43,12 @@ By default, the tool runs in interactive mode, providing a menu with the followi
 ./target/release/android_proxy_setter
 ```
 
-### Direct Command Mode
+### 2. Direct Command Mode
 
 You can also use command-line flags to perform actions directly without the interactive menu:
 
 ```bash
-# Set proxy with default port (8888)
+# Set proxy with default port (8083)
 ./target/release/android_proxy_setter --set
 
 # Set proxy with specific port
@@ -56,12 +58,29 @@ You can also use command-line flags to perform actions directly without the inte
 ./target/release/android_proxy_setter --clear
 ```
 
+### 3. GUI Mode with System Tray Icon
+
+The tool now supports a graphical user interface mode with a system tray icon for easy access:
+
+```bash
+# Run in GUI mode
+./target/release/android_proxy_setter --gui
+```
+
+In GUI mode, you can:
+
+- Set proxy settings directly from the system tray menu
+- Clear proxy settings
+- View current proxy settings
+- Receive notifications via dialog boxes upon success or failure
+
 ### Command Line Arguments
 
-- `-p, --port <PORT>`: Set the proxy port (default is 8888)
+- `-p, --port <PORT>`: Set the proxy port (default is 8083)
 - `-i, --ip <IP>`: Manually specify the IP address (default is to automatically get the local IP)
 - `-s, --set`: Skip interactive mode and directly set proxy
 - `-c, --clear`: Skip interactive mode and directly clear proxy
+- `-g, --gui`: Run in GUI mode with system tray icon
 - `-h, --help`: Display help information
 - `-V, --version`: Display version information
 
@@ -77,13 +96,38 @@ adb shell settings put global http_proxy :0
 
 - Automatic detection of local IP address
 - Support for multiple connected Android devices
-- Interactive menu for easy proxy management
+- Interactive CLI menu for easy proxy management
+- GUI mode with system tray integration for desktop environments
 - Direct command-line options for scripting and automation
 - Verification of proxy settings after changes
-- Colored output for better readability
+- Colored output for better readability in CLI mode
+- Notification dialogs in GUI mode
+
+## Packaging and Distribution
+
+### macOS
+
+To create a macOS application bundle:
+
+```bash
+# Install cargo-bundle
+cargo install cargo-bundle
+
+# Build the application bundle
+cargo bundle --release
+```
+
+The bundled application will be available at `target/release/bundle/osx/Android Proxy Setter.app`.
+
+To create a DMG file for easy distribution:
+
+```bash
+create-dmg "target/release/bundle/osx/Android Proxy Setter.app"
+```
 
 ## Notes
 
 - Ensure the Android device and computer are on the same network
 - Some Android devices may require different settings; this tool uses the most common global HTTP proxy setting method
 - Some applications may ignore system proxy settings
+- GUI mode requires a desktop environment that supports system tray icons
