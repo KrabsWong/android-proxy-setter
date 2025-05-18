@@ -43,7 +43,8 @@ By default, the tool runs in interactive mode, providing a menu with the followi
 1. Set global proxy
 2. Clear global proxy
 3. View current proxy settings
-4. Exit
+4. Restart ADB
+5. Exit
 
 ```bash
 # Run in interactive mode
@@ -101,6 +102,7 @@ adb shell settings put global http_proxy :0
 
 ## Features
 
+- Automatic restart ADB
 - Automatic detection of local IP address
 - Support for multiple connected Android devices
 - Interactive CLI menu for easy proxy management
