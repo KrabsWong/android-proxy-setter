@@ -4,20 +4,8 @@ use colored::*;
 use local_ip_address::local_ip;
 use std::io::{self, Write};
 use std::process::{Command, Stdio};
-use std::result::Result::Ok;
-use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
-
-// GUI imports
-use image;
-use rfd::MessageDialog;
-use tray_icon::icon::Icon as TrayIconIcon;
-use tray_icon::{
-    menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem},
-    TrayIconBuilder,
-};
-use winit::event_loop::{ControlFlow, EventLoop};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -37,24 +25,12 @@ struct Args {
     /// Skip interactive mode and directly clear proxy
     #[arg(short, long)]
     clear: bool,
-
-    /// Run in GUI mode with system tray icon
-    #[arg(short, long)]
-    gui: bool,
 }
-
-// Global state for the proxy settings
-struct ProxyState {
-    ip: String,
-    port: u16,
-}
-
-// 修改为使用普通全局变量而不是OnceCell，并在函数内部存储到Box里
-static mut TRAY_ICON: Option<Box<dyn std::any::Any>> = None;
 
 fn main() -> Result<()> {
     let args = Args::parse();
 
+    // Ensure adb is running; if not, try to restart it
     let is_adb_running = Command::new("pgrep").arg("adb").output()?;
     let pids: Vec<u32> = String::from_utf8_lossy(&is_adb_running.stdout)
         .split_whitespace()
@@ -116,24 +92,7 @@ fn main() -> Result<()> {
         .trim()
         .to_string();
 
-    // Create shared proxy state
-    let proxy_state = Arc::new(Mutex::new(ProxyState {
-        ip: match &args.ip {
-            Some(ip) => ip.clone(),
-            None => {
-                let local_ip = local_ip().context("Unable to get local IP address")?;
-                local_ip.to_string()
-            }
-        },
-        port: args.port,
-    }));
-
-    // Choose between CLI and GUI mode
-    if args.gui {
-        run_gui_mode(proxy_state)
-    } else {
-        run_cli_mode(args, current_proxy_setting)
-    }
+    run_cli_mode(args, current_proxy_setting)
 }
 
 fn run_cli_mode(args: Args, current_proxy_setting: String) -> Result<()> {
@@ -183,143 +142,6 @@ fn run_cli_mode(args: Args, current_proxy_setting: String) -> Result<()> {
     }
 
     Ok(())
-}
-
-fn run_gui_mode(proxy_state: Arc<Mutex<ProxyState>>) -> Result<()> {
-    println!(
-        "{}",
-        "Starting in GUI mode with system tray icon...".green()
-    );
-
-    // Create event loop
-    let event_loop = EventLoop::new();
-
-    // Create tray menu
-    let tray_menu = Menu::new();
-
-    // Create menu items
-    let set_proxy_item = MenuItem::new("Set Proxy", true, None);
-    let clear_proxy_item = MenuItem::new("Clear Proxy", true, None);
-    let view_proxy_item = MenuItem::new("View Proxy Settings", true, None);
-    let restart_adb_item = MenuItem::new("Restart ADB", true, None);
-    let quit_item = MenuItem::new("Quit", true, None);
-
-    // Add items to menu
-    let _ = tray_menu.append(&set_proxy_item);
-    let _ = tray_menu.append(&clear_proxy_item);
-    let _ = tray_menu.append(&view_proxy_item);
-    let _ = tray_menu.append(&restart_adb_item);
-    let _ = tray_menu.append(&PredefinedMenuItem::separator());
-    let _ = tray_menu.append(&quit_item);
-
-    // Create tray icon
-    // 从resources目录加载PNG图标
-    let icon = include_bytes!("../resources/icon.png");
-    let icon = image::load_from_memory(icon).context("Failed to load icon")?;
-    let icon = icon.to_rgba8();
-    let (icon_width, icon_height) = icon.dimensions();
-
-    let tray_icon = TrayIconBuilder::new()
-        .with_menu(Box::new(tray_menu))
-        .with_icon(TrayIconIcon::from_rgba(icon.into_raw(), icon_width, icon_height).unwrap())
-        .with_tooltip("Android Proxy Manager")
-        .build()
-        .context("Failed to create tray icon")?;
-
-    // 安全地存储tray_icon到全局变量
-    unsafe {
-        TRAY_ICON = Some(Box::new(tray_icon));
-    }
-
-    // Create a channel for menu events
-    let (tx, rx) = std::sync::mpsc::channel();
-
-    // Store menu item IDs for later use
-    let set_proxy_id = set_proxy_item.id();
-    let clear_proxy_id = clear_proxy_item.id();
-    let view_proxy_id = view_proxy_item.id();
-    let restart_adb_id = restart_adb_item.id();
-    let quit_id = quit_item.id();
-
-    // Handle menu events
-    let menu_channel = MenuEvent::receiver();
-    thread::spawn(move || {
-        while let Ok(event) = menu_channel.recv() {
-            if event.id == set_proxy_id {
-                let _ = tx.send("set");
-            } else if event.id == clear_proxy_id {
-                let _ = tx.send("clear");
-            } else if event.id == view_proxy_id {
-                let _ = tx.send("view");
-            } else if event.id == restart_adb_id {
-                let _ = tx.send("restart_adb");
-            } else if event.id == quit_id {
-                let _ = tx.send("quit");
-            }
-        }
-    });
-
-    // Clone proxy_state for the event loop
-    let proxy_state_clone = Arc::clone(&proxy_state);
-
-    // Run the event loop
-    event_loop.run(move |_, _, control_flow| {
-        *control_flow = ControlFlow::Wait;
-
-        // Check for menu events
-        if let Ok(cmd) = rx.try_recv() {
-            match cmd {
-                "set" => {
-                    let state = proxy_state_clone.lock().unwrap();
-                    let ip = state.ip.clone();
-                    let port = state.port;
-                    drop(state); // 立即释放锁
-
-                    thread::spawn(move || {
-                        // 创建一个具有所需值的Args对象
-                        let args = Args {
-                            port,
-                            ip: Some(ip),
-                            set: false,
-                            clear: false,
-                            gui: false,
-                        };
-
-                        if let Err(e) = set_proxy(&args) {
-                            show_error_dialog(&format!("Failed to set proxy: {}", e));
-                        } else {
-                            show_info_dialog("Successfully set proxy!");
-                        }
-                    });
-                }
-                "clear" => {
-                    thread::spawn(move || {
-                        if let Err(e) = clear_proxy() {
-                            show_error_dialog(&format!("Failed to clear proxy: {}", e));
-                        } else {
-                            show_info_dialog("Successfully cleared proxy!");
-                        }
-                    });
-                }
-                "view" => {
-                    thread::spawn(move || match get_proxy_info() {
-                        Ok(info) => show_info_dialog(&info),
-                        Err(e) => show_error_dialog(&format!("Failed to get proxy info: {}", e)),
-                    });
-                }
-                "restart_adb" => {
-                    thread::spawn(move || match restart_adb() {
-                        Ok(_info) => show_info_dialog("Restart ADB success!"),
-                        Err(e) => show_error_dialog(&format!("Restart adb failed: {}", e)),
-                    });
-                }
-                "quit" => {
-                    *control_flow = ControlFlow::Exit;
-                }
-                _ => {}
-            }
-        }
-    });
 }
 
 fn set_proxy(args: &Args) -> Result<()> {
@@ -519,40 +341,6 @@ fn view_proxy() -> Result<()> {
     Ok(())
 }
 
-// Function to get proxy info as a string for GUI mode
-fn get_proxy_info() -> Result<String> {
-    let proxy_settings = Command::new("adb")
-        .args(["shell", "settings", "get", "global", "http_proxy"])
-        .output()
-        .context("Failed to get HTTP proxy settings")?;
-
-    if !proxy_settings.status.success() {
-        let error = String::from_utf8_lossy(&proxy_settings.stderr);
-        anyhow::bail!("Failed to get proxy settings: {}", error);
-    }
-
-    let proxy_setting = String::from_utf8_lossy(&proxy_settings.stdout)
-        .trim()
-        .to_string();
-
-    let mut info = String::from("Current Proxy Settings:\n");
-    if proxy_setting.is_empty() || proxy_setting == ":0" {
-        info.push_str("Global HTTP Proxy: Not set");
-    } else {
-        // Split the proxy setting into IP and port
-        if let Some((ip, port)) = proxy_setting.split_once(':') {
-            info.push_str(&format!("Global HTTP Proxy: {}\n", proxy_setting));
-            info.push_str(&format!("IP Address: {}\n", ip));
-            info.push_str(&format!("Port: {}", port));
-        } else {
-            info.push_str(&format!("Global HTTP Proxy: {}\n", proxy_setting));
-            info.push_str("(Unable to parse IP and port separately)");
-        }
-    }
-
-    Ok(info)
-}
-
 fn restart_adb() -> Result<()> {
     const SCRIPT_CONTENT: &str = include_str!("./bin/resurrection_adb.sh");
     let status = Command::new("sh")
@@ -569,21 +357,4 @@ fn restart_adb() -> Result<()> {
     }
 
     Ok(())
-}
-
-// Helper functions for GUI dialogs
-fn show_info_dialog(message: &str) {
-    MessageDialog::new()
-        .set_title("Android Proxy Manager")
-        .set_description(message)
-        .set_level(rfd::MessageLevel::Info)
-        .show();
-}
-
-fn show_error_dialog(message: &str) {
-    MessageDialog::new()
-        .set_title("Android Proxy Manager - Error")
-        .set_description(message)
-        .set_level(rfd::MessageLevel::Error)
-        .show();
 }
