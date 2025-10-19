@@ -25,25 +25,17 @@ struct Args {
     /// Skip interactive mode and directly clear proxy
     #[arg(short, long)]
     clear: bool,
+
+    /// View current proxy settings and exit
+    #[arg(long)]
+    view: bool,
 }
 
 fn main() -> Result<()> {
     let args = Args::parse();
 
-    // Ensure adb is running; if not, try to restart it
-    let is_adb_running = Command::new("pgrep").arg("adb").output()?;
-    let pids: Vec<u32> = String::from_utf8_lossy(&is_adb_running.stdout)
-        .split_whitespace()
-        .filter_map(|s| s.parse().ok())
-        .collect();
-    if pids.is_empty() {
-        println!("Adb is not running, I will restart it direcly.\n----------------------------");
-        let _ = restart_adb();
-        println!("Adb is restarted, \n----------------------------")
-    }
-
     // Check if ADB is available
-    println!("Checking if ADB is available...");
+
     let adb_version = Command::new("adb").arg("version").output().context(
         "Unable to execute ADB command, please ensure ADB is installed and added to PATH",
     )?;
@@ -101,6 +93,8 @@ fn run_cli_mode(args: Args, current_proxy_setting: String) -> Result<()> {
         set_proxy(&args)?;
     } else if args.clear {
         clear_proxy()?;
+    } else if args.view {
+        print_proxy()?;
     } else {
         // Interactive mode
         println!("\n{}", "=== Android Proxy Manager ===".green().bold());
@@ -119,7 +113,7 @@ fn run_cli_mode(args: Args, current_proxy_setting: String) -> Result<()> {
         println!("4. {}", "Restart ADB".yellow());
         println!("5. {}", "Exit".purple());
 
-        print!("\nEnter your choice (1-4): ");
+        print!("\nEnter your choice (1-5): ");
         io::stdout().flush()?;
 
         let mut choice = String::new();
@@ -337,6 +331,38 @@ fn view_proxy() -> Result<()> {
     println!("\nPress Enter to continue...");
     let mut input = String::new();
     io::stdin().read_line(&mut input)?;
+
+    Ok(())
+}
+
+fn print_proxy() -> Result<()> {
+    let proxy_settings = Command::new("adb")
+        .args(["shell", "settings", "get", "global", "http_proxy"])
+        .output()
+        .context("Failed to get HTTP proxy settings")?;
+
+    if !proxy_settings.status.success() {
+        let error = String::from_utf8_lossy(&proxy_settings.stderr);
+        anyhow::bail!("Failed to get proxy settings: {}", error);
+    }
+
+    let proxy_setting = String::from_utf8_lossy(&proxy_settings.stdout)
+        .trim()
+        .to_string();
+
+    if proxy_setting.is_empty() || proxy_setting == ":0" {
+        println!("Global HTTP Proxy: {}", "Not set".red());
+    } else {
+        // Split the proxy setting into IP and port
+        if let Some((ip, port)) = proxy_setting.split_once(':') {
+            println!("Global HTTP Proxy: {}", proxy_setting.green());
+            println!("IP Address: {}", ip.green());
+            println!("Port: {}", port.green());
+        } else {
+            println!("Global HTTP Proxy: {}", proxy_setting.green());
+            println!("(Unable to parse IP and port separately)");
+        }
+    }
 
     Ok(())
 }
