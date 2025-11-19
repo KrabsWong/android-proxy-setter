@@ -14,12 +14,17 @@ mod error;
 use crate::config::args::parse_args;
 use crate::error::AppResult;
 use crate::adb::device::{check_adb_availability, get_connected_devices, is_adb_running, restart_adb_server};
-use crate::proxy::manager::get_proxy_info;
+use crate::proxy::manager::{get_proxy_info, view_proxy};
 use crate::cli::run_cli_mode;
 
 fn main() -> AppResult<()> {
     // Parse command-line arguments
     let args = parse_args();
+
+    // For view-only mode, skip all initialization and directly show proxy info
+    if args.view {
+        return view_proxy_only();
+    }
 
     // Check if ADB is running and restart if necessary
     check_and_restart_adb()?;
@@ -83,5 +88,10 @@ fn get_current_proxy_setting() -> AppResult<String> {
             }
         })
         .unwrap_or_else(|_| String::new()))
+}
+
+/// View proxy settings only, without any initialization checks
+fn view_proxy_only() -> AppResult<()> {
+    view_proxy()
 }
 
