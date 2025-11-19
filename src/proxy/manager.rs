@@ -98,6 +98,27 @@ pub fn view_proxy() -> AppResult<()> {
     Ok(())
 }
 
+/// View current proxy settings without waiting for user input
+pub fn view_proxy_direct() -> AppResult<()> {
+    let proxy_setting = get_current_proxy_setting()?;
+
+    println!("Current Android Proxy Settings:");
+    if proxy_setting.is_empty() || proxy_setting == ":0" {
+        println!("Global HTTP Proxy: {}", "Not set".red());
+    } else {
+        // Split the proxy setting into IP and port
+        if let Some((ip, port)) = proxy_setting.split_once(':') {
+            println!("Global HTTP Proxy: {}", proxy_setting.green());
+            println!("IP Address: {}", ip.green());
+            println!("Port: {}", port.green());
+        } else {
+            println!("Global HTTP Proxy: {}", proxy_setting.green());
+        }
+    }
+
+    Ok(())
+}
+
 /// Get proxy information as a string (for GUI mode)
 pub fn get_proxy_info() -> AppResult<String> {
     let proxy_setting = get_current_proxy_setting()?;

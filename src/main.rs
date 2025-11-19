@@ -14,7 +14,7 @@ mod error;
 use crate::config::args::parse_args;
 use crate::error::AppResult;
 use crate::adb::device::{check_adb_availability, get_connected_devices, is_adb_running, restart_adb_server};
-use crate::proxy::manager::{get_proxy_info, view_proxy};
+use crate::proxy::manager::{get_proxy_info, view_proxy_direct};
 use crate::cli::run_cli_mode;
 
 fn main() -> AppResult<()> {
@@ -92,6 +92,6 @@ fn get_current_proxy_setting() -> AppResult<String> {
 
 /// View proxy settings only, without any initialization checks
 fn view_proxy_only() -> AppResult<()> {
-    view_proxy()
+    view_proxy_direct()
 }
 
