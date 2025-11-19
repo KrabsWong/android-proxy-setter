@@ -114,6 +114,22 @@ add_to_path() {
         return 0
     fi
 
+    # Check if config file already has PATH entry for this directory
+    case "$shell_type" in
+        bash|zsh)
+            if grep -q "export PATH=\"$install_dir:" "$config_file" 2>/dev/null; then
+                print_info "PATH entry already exists in $config_file"
+                return 0
+            fi
+            ;;
+        fish)
+            if grep -q "set -gx PATH \"$install_dir\"" "$config_file" 2>/dev/null; then
+                print_info "PATH entry already exists in $config_file"
+                return 0
+            fi
+            ;;
+    esac
+
     print_info "Adding $install_dir to PATH in $config_file"
 
     case "$shell_type" in
@@ -128,39 +144,116 @@ add_to_path() {
     print_success "Added to PATH. Please restart your shell or run: source $config_file"
 }
 
+# Check for command conflicts
+check_command_conflicts() {
+    local prefix="$1"
+    local commands=("$prefix" "$prefix-set" "$prefix-clear" "$prefix-view" "$prefix-restart")
+    local conflicts=()
+    local current_tool_path="$HOME/.local/bin/android_proxy_setter"
+
+    for cmd in "${commands[@]}"; do
+        if type "$cmd" >/dev/null 2>&1; then
+            # Check if this is already our tool
+            if [[ "$cmd" == "aps" ]]; then
+                local alias_def
+                alias_def=$(alias "$cmd" 2>/dev/null || echo "")
+                if [[ "$alias_def" == *"android_proxy_setter"* ]]; then
+                    # Skip if it's already our tool - no output needed
+                    continue
+                fi
+            fi
+            conflicts+=("$cmd")
+        fi
+    done
+
+    if [[ ${#conflicts[@]} -gt 0 ]]; then
+        return 1
+    fi
+    return 0
+}
+
+# Get command prefix from user
+get_command_prefix() {
+    local default_prefix="aps"
+
+    # Check for conflicts silently
+    if check_command_conflicts "$default_prefix"; then
+        echo "$default_prefix"
+        return 0
+    fi
+
+    # If we get here, there are conflicts and we need user input
+    print_warning "The default command prefix 'aps' conflicts with existing commands."
+    print_info "Please choose a different prefix for the Android Proxy Setter commands."
+    echo ""
+    print_info "Commands will be created as: <prefix>, <prefix>-set, <prefix>-clear, etc."
+    echo ""
+
+    while true; do
+        read -r -p "Enter command prefix (default: $default_prefix): " user_prefix
+
+        # Use default if empty
+        if [[ -z "$user_prefix" ]]; then
+            user_prefix="$default_prefix"
+        fi
+
+        # Validate prefix
+        if [[ ! "$user_prefix" =~ ^[a-zA-Z][a-zA-Z0-9_-]*$ ]]; then
+            print_error "Invalid prefix. Must start with a letter and contain only letters, numbers, hyphens, and underscores."
+            continue
+        fi
+
+        # Check for conflicts with new prefix
+        if check_command_conflicts "$user_prefix"; then
+            print_success "Using command prefix: $user_prefix"
+            echo "$user_prefix"
+            return 0
+        else
+            print_error "Prefix '$user_prefix' still has conflicts. Please choose a different prefix."
+        fi
+    done
+}
+
 # Create shell aliases
 create_aliases() {
     local shell_type="$1"
     local config_file="$2"
+    local prefix="$3"
 
-    print_info "Creating shell aliases..."
+    print_info "Creating shell aliases with prefix: $prefix..."
+
+    # Check if aliases already exist
+    if grep -q "# Android Proxy Setter aliases" "$config_file" 2>/dev/null; then
+        print_info "Aliases already exist in $config_file, skipping creation"
+        return 0
+    fi
 
     case "$shell_type" in
         bash|zsh)
-            cat >> "$config_file" << 'EOF'
+            cat >> "$config_file" << EOF
 
 # Android Proxy Setter aliases
-alias aps='android_proxy_setter'
-alias aps-set='android_proxy_setter --set'
-alias aps-clear='android_proxy_setter --clear'
-alias aps-view='android_proxy_setter --view'
-alias aps-restart='android_proxy_setter --restart-adb'
+alias ${prefix}='android_proxy_setter'
+alias ${prefix}-set='android_proxy_setter --set'
+alias ${prefix}-clear='android_proxy_setter --clear'
+alias ${prefix}-view='android_proxy_setter --view'
+alias ${prefix}-restart='android_proxy_setter --restart-adb'
 EOF
             ;;
         fish)
-            cat >> "$config_file" << 'EOF'
+            cat >> "$config_file" << EOF
 
 # Android Proxy Setter aliases
-alias aps='android_proxy_setter'
-alias aps-set='android_proxy_setter --set'
-alias aps-clear='android_proxy_setter --clear'
-alias aps-view='android_proxy_setter --view'
-alias aps-restart='android_proxy_setter --restart-adb'
+alias ${prefix}='android_proxy_setter'
+alias ${prefix}-set='android_proxy_setter --set'
+alias ${prefix}-clear='android_proxy_setter --clear'
+alias ${prefix}-view='android_proxy_setter --view'
+alias ${prefix}-restart='android_proxy_setter --restart-adb'
 EOF
             ;;
     esac
 
-    print_success "Created aliases: aps, aps-set, aps-clear, aps-view, aps-restart"
+    print_success "Created aliases: ${prefix}, ${prefix}-set, ${prefix}-clear, ${prefix}-view, ${prefix}-restart"
 }
 
 # Main installation function
@@ -190,18 +283,22 @@ main() {
     # Add to PATH
     add_to_path "$install_dir" "$shell_type" "$config_file"
 
+    # Get command prefix
+    local prefix
+    prefix=$(get_command_prefix)
+
     # Create aliases
-    create_aliases "$shell_type" "$config_file"
+    create_aliases "$shell_type" "$config_file" "$prefix"
 
     print_success ""
     print_success "🎉 Installation completed successfully!"
     print_success ""
     print_success "Available commands:"
-    print_success "  aps           - Interactive mode (same as android_proxy_setter)"
-    print_success "  aps-set       - Set proxy directly"
-    print_success "  aps-clear     - Clear proxy directly"
-    print_success "  aps-view      - View current proxy settings"
-    print_success "  aps-restart   - Restart ADB server"
+    print_success "  ${prefix}           - Interactive mode (same as android_proxy_setter)"
+    print_success "  ${prefix}-set       - Set proxy directly"
+    print_success "  ${prefix}-clear     - Clear proxy directly"
+    print_success "  ${prefix}-view      - View current proxy settings"
+    print_success "  ${prefix}-restart   - Restart ADB server"
     print_success ""
     print_success "To start using immediately, run:"
     print_success "  source $config_file"

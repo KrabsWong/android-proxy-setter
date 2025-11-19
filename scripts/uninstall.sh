@@ -87,6 +87,41 @@ remove_binary() {
     fi
 }
 
+# Detect command prefix from config file
+detect_command_prefix() {
+    local shell_type="$1"
+    local config_file="$2"
+
+    if [[ ! -f "$config_file" ]]; then
+        echo "aps"  # Default prefix
+        return 0
+    fi
+
+    # Look for Android Proxy Setter aliases and extract the prefix
+    case "$shell_type" in
+        bash|zsh)
+            local alias_line
+            alias_line=$(grep "alias.*='android_proxy_setter'" "$config_file" | head -1)
+            if [[ -n "$alias_line" ]]; then
+                # Extract the command name before '='
+                echo "$alias_line" | sed -n 's/^alias \([^=]*\)=.*/\1/p'
+            else
+                echo "aps"  # Default prefix
+            fi
+            ;;
+        fish)
+            local alias_line
+            alias_line=$(grep "alias.*='android_proxy_setter'" "$config_file" | head -1)
+            if [[ -n "$alias_line" ]]; then
+                # Extract the command name after 'alias ' and before '='
+                echo "$alias_line" | sed -n 's/^alias \([^=]*\)=.*/\1/p'
+            else
+                echo "aps"  # Default prefix
+            fi
+            ;;
+    esac
+}
+
 # Remove from PATH and aliases
 remove_from_config() {
     local shell_type="$1"
@@ -100,6 +135,11 @@ remove_from_config() {
 
     print_info "Cleaning up $config_file..."
 
+    # Detect the command prefix used during installation
+    local prefix
+    prefix=$(detect_command_prefix "$shell_type" "$config_file")
+    print_info "Detected command prefix: $prefix"
+
     # Create a temporary file
     local temp_file
     temp_file=$(mktemp)
@@ -109,13 +149,21 @@ remove_from_config() {
             # Remove PATH entry and aliases
             grep -v "export PATH=\"$install_dir:" "$config_file" | \
             grep -v "# Android Proxy Setter aliases" | \
-            grep -v "alias aps=" > "$temp_file"
+            grep -v "alias $prefix=" | \
+            grep -v "alias $prefix-set=" | \
+            grep -v "alias $prefix-clear=" | \
+            grep -v "alias $prefix-view=" | \
+            grep -v "alias $prefix-restart=" > "$temp_file"
             ;;
         fish)
             # Remove PATH entry and aliases
             grep -v "set -gx PATH \"$install_dir\"" "$config_file" | \
             grep -v "# Android Proxy Setter aliases" | \
-            grep -v "alias aps=" > "$temp_file"
+            grep -v "alias $prefix=" | \
+            grep -v "alias $prefix-set=" | \
+            grep -v "alias $prefix-clear=" | \
+            grep -v "alias $prefix-view=" | \
+            grep -v "alias $prefix-restart=" > "$temp_file"
             ;;
     esac
 
@@ -172,7 +220,7 @@ main() {
     print_success "The following have been removed:"
     print_success "  - Binary: $install_dir/$BINARY_NAME"
     print_success "  - PATH configuration"
-    print_success "  - Shell aliases (aps, aps-set, etc.)"
+    print_success "  - Shell aliases"
     print_success ""
     print_success "To complete the cleanup, please restart your terminal"
     print_success "or run: source $config_file"
