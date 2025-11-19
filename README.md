@@ -21,6 +21,27 @@ This is a tool to set the network proxy of an Android device connected to the co
 
 ## Installation
 
+### Quick Installation (Recommended)
+
+```bash
+# Clone the repository
+git clone https://github.com/KrabsWong/android_proxy_setter.git
+cd android_proxy_setter
+
+# Build and install to your PATH
+make install
+```
+
+This will:
+- Build the release version
+- Install the binary to `~/.local/bin/`
+- Add the directory to your PATH
+- Create convenient shell aliases
+
+### Manual Installation
+
+If you prefer manual installation:
+
 ```bash
 # Clone the repository
 git clone https://github.com/KrabsWong/android_proxy_setter.git
@@ -28,43 +49,72 @@ cd android_proxy_setter
 
 # Build the project
 cargo build --release
+
+# Install using the script
+./install.sh
 ```
 
-The compiled executable is located at `target/release/android_proxy_setter`.
+### Development Installation
+
+For development purposes:
+
+```bash
+# Build development version
+make dev
+
+# Or use cargo directly
+cargo build
+```
+
+The compiled executable is located at `target/release/android_proxy_setter` (release) or `target/debug/android_proxy_setter` (debug).
 
 ## Usage
 
-The tool offers two modes of operation:
+After installation, you can use the tool with convenient aliases:
 
-### 1. Interactive CLI Mode
-
-By default, the tool runs in interactive mode, providing a menu with the following options:
-
-1. Set global proxy
-2. Clear global proxy
-3. View current proxy settings
-4. Restart ADB
-5. Exit
+### Using Aliases (Recommended)
 
 ```bash
-# Run in interactive mode
-./target/release/android_proxy_setter
-```
+# Interactive mode (shows menu with options)
+aps
 
-### 2. Direct Command Mode
-
-You can also use command-line flags to perform actions directly without the interactive menu:
-
-```bash
 # Set proxy with default port (8083)
-./target/release/android_proxy_setter --set
+aps-set
 
 # Set proxy with specific port
-./target/release/android_proxy_setter --set --port 8080
+aps-set --port 8080
 
 # Clear proxy settings
-./target/release/android_proxy_setter --clear
+aps-clear
+
+# View current proxy settings
+aps-view
+
+# Restart ADB server
+aps-restart
 ```
+
+### Using Full Command
+
+You can also use the full command name:
+
+```bash
+# Interactive mode
+android_proxy_setter
+
+# Direct commands
+android_proxy_setter --set
+android_proxy_setter --clear
+android_proxy_setter --set --port 8080
+```
+
+### Available Aliases
+
+- `aps` - Interactive mode (same as `android_proxy_setter`)
+- `aps-set` - Set proxy directly
+- `aps-clear` - Clear proxy directly
+- `aps-view` - View current proxy settings
+- `aps-restart` - Restart ADB server
 
 ### Command Line Arguments
 
@@ -81,6 +131,36 @@ If you prefer to use ADB directly to clear proxy settings, you can run:
 
 ```bash
 adb shell settings put global http_proxy :0
+```
+
+## Development Commands
+
+This project includes a Makefile for common development tasks:
+
+```bash
+# Build release version
+make build
+
+# Build development version
+make dev
+
+# Run tests
+make test
+
+# Check code
+make check
+
+# Format code
+make fmt
+
+# Lint code
+make lint
+
+# Clean build artifacts
+make clean
+
+# Show all available commands
+make help
 ```
 
 ## Features

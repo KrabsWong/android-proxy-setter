@@ -16,6 +16,12 @@ pub fn run_cli_mode(args: Args, current_proxy_setting: String) -> AppResult<()> 
         set_proxy(&settings)?;
     } else if args.clear {
         clear_proxy()?;
+    } else if args.restart_adb {
+        restart_adb_server()?;
+    } else if args.help_commands {
+        show_available_commands()?;
+    } else if args.view {
+        view_proxy()?;
     } else {
         run_interactive_mode(current_proxy_setting, args)?;
     }
@@ -64,6 +70,40 @@ fn run_interactive_mode(current_proxy_setting: String, args: Args) -> AppResult<
             return Ok(());
         }
     }
+
+    Ok(())
+}
+
+/// Show available commands and aliases
+fn show_available_commands() -> AppResult<()> {
+    use colored::*;
+
+    println!("\n{}", "=== Android Proxy Setter - Available Commands ===".green().bold());
+    println!("\n{}", "Main executable:".blue());
+    println!("  android_proxy_setter              - Interactive mode");
+    println!("  android_proxy_setter --help       - Show help");
+    println!("  android_proxy_setter --help-commands - Show this help");
+
+    println!("\n{}", "Direct commands:".blue());
+    println!("  android_proxy_setter --set        - Set proxy directly");
+    println!("  android_proxy_setter --clear      - Clear proxy directly");
+    println!("  android_proxy_setter --restart-adb - Restart ADB server");
+    println!("  android_proxy_setter --view         - View current proxy settings");
+
+    println!("\n{}", "Shell aliases (after installation):".yellow());
+    println!("  aps                               - Interactive mode");
+    println!("  aps-set                           - Set proxy directly");
+    println!("  aps-clear                         - Clear proxy directly");
+    println!("  aps-view                          - View current proxy settings");
+    println!("  aps-restart                       - Restart ADB server");
+
+    println!("\n{}", "Options:".blue());
+    println!("  --port <PORT>                     - Specify proxy port (default: 8083)");
+    println!("  --ip <IP_ADDRESS>                 - Specify IP address (auto-detected if not specified)");
+
+    println!("\n{}", "Installation:".blue());
+    println!("  make install                      - Build and install");
+    println!("  make uninstall                    - Remove installation");
 
     Ok(())
 }

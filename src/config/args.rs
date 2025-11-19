@@ -22,6 +22,18 @@ pub struct Args {
     #[arg(short, long)]
     pub clear: bool,
 
+    /// Skip interactive mode and directly restart ADB server
+    #[arg(long)]
+    pub restart_adb: bool,
+
+    /// Show available commands and aliases
+    #[arg(long)]
+    pub help_commands: bool,
+
+    /// Skip interactive mode and directly view proxy settings
+    #[arg(long)]
+    pub view: bool,
+
 }
 
 /// Parse command-line arguments
