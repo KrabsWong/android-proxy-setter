@@ -144,74 +144,128 @@ add_to_path() {
     print_success "Added to PATH. Please restart your shell or run: source $config_file"
 }
 
-# Check for command conflicts
+# Check for command conflicts and identify existing tool commands
 check_command_conflicts() {
     local prefix="$1"
     local commands=("$prefix" "$prefix-set" "$prefix-clear" "$prefix-view" "$prefix-restart")
     local conflicts=()
+    local existing_tool_commands=()
     local current_tool_path="$HOME/.local/bin/android_proxy_setter"
 
     for cmd in "${commands[@]}"; do
         if type "$cmd" >/dev/null 2>&1; then
-            # Check if this is already our tool
-            if [[ "$cmd" == "aps" ]]; then
-                local alias_def
-                alias_def=$(alias "$cmd" 2>/dev/null || echo "")
-                if [[ "$alias_def" == *"android_proxy_setter"* ]]; then
-                    # Skip if it's already our tool - no output needed
-                    continue
-                fi
+            # Check if this command is already our tool
+            local is_our_tool=false
+
+            # Check if it's an alias pointing to our tool
+            local alias_def
+            alias_def=$(alias "$cmd" 2>/dev/null || echo "")
+            if [[ "$alias_def" == *"android_proxy_setter"* ]]; then
+                is_our_tool=true
             fi
-            conflicts+=("$cmd")
+
+            # Check if it's a function that calls our tool
+            local func_def
+            func_def=$(type "$cmd" 2>/dev/null | grep -q "android_proxy_setter" && echo "found" || echo "")
+            if [[ -n "$func_def" ]]; then
+                is_our_tool=true
+            fi
+
+            # Check if it's the actual binary path
+            local cmd_path
+            cmd_path=$(command -v "$cmd" 2>/dev/null || echo "")
+            if [[ "$cmd_path" == "$current_tool_path" ]]; then
+                is_our_tool=true
+            fi
+
+            if [[ "$is_our_tool" == "true" ]]; then
+                existing_tool_commands+=("$cmd")
+            else
+                conflicts+=("$cmd")
+            fi
         fi
     done
 
+    # If all commands are already our tool, return special code
+    if [[ ${#existing_tool_commands[@]} -eq ${#commands[@]} ]]; then
+        return 2  # All commands already exist and are our tool
+    fi
+
+    # If there are conflicts with external commands, return error
     if [[ ${#conflicts[@]} -gt 0 ]]; then
         return 1
     fi
-    return 0
+
+    return 0  # No conflicts
 }
 
 # Get command prefix from user
 get_command_prefix() {
     local default_prefix="aps"
 
-    # Check for conflicts silently
-    if check_command_conflicts "$default_prefix"; then
-        echo "$default_prefix"
-        return 0
-    fi
+    # Check for conflicts
+    check_command_conflicts "$default_prefix"
+    local conflict_status=$?
 
-    # If we get here, there are conflicts and we need user input
-    print_warning "The default command prefix 'aps' conflicts with existing commands."
-    print_info "Please choose a different prefix for the Android Proxy Setter commands."
-    echo ""
-    print_info "Commands will be created as: <prefix>, <prefix>-set, <prefix>-clear, etc."
-    echo ""
-
-    while true; do
-        read -r -p "Enter command prefix (default: $default_prefix): " user_prefix
-
-        # Use default if empty
-        if [[ -z "$user_prefix" ]]; then
-            user_prefix="$default_prefix"
-        fi
-
-        # Validate prefix
-        if [[ ! "$user_prefix" =~ ^[a-zA-Z][a-zA-Z0-9_-]*$ ]]; then
-            print_error "Invalid prefix. Must start with a letter and contain only letters, numbers, hyphens, and underscores."
-            continue
-        fi
-
-        # Check for conflicts with new prefix
-        if check_command_conflicts "$user_prefix"; then
-            print_success "Using command prefix: $user_prefix"
-            echo "$user_prefix"
+    case $conflict_status in
+        0)
+            # No conflicts, use default prefix
+            echo "$default_prefix"
             return 0
-        else
-            print_error "Prefix '$user_prefix' still has conflicts. Please choose a different prefix."
-        fi
-    done
+            ;;
+        1)
+            # Conflicts with external commands, need user input
+            print_warning "The default command prefix 'aps' conflicts with existing commands:"
+            print_info "Please choose a different prefix for the Android Proxy Setter commands."
+            echo ""
+            print_info "Commands will be created as: <prefix>, <prefix>-set, <prefix>-clear, etc."
+            echo ""
+
+            while true; do
+                read -r -p "Enter command prefix (default: $default_prefix): " user_prefix
+
+                # Use default if empty
+                if [[ -z "$user_prefix" ]]; then
+                    user_prefix="$default_prefix"
+                fi
+
+                # Validate prefix
+                if [[ ! "$user_prefix" =~ ^[a-zA-Z][a-zA-Z0-9_-]*$ ]]; then
+                    print_error "Invalid prefix. Must start with a letter and contain only letters, numbers, hyphens, and underscores."
+                    continue
+                fi
+
+                # Check for conflicts with new prefix
+                check_command_conflicts "$user_prefix"
+                local new_conflict_status=$?
+
+                case $new_conflict_status in
+                    0)
+                        # No conflicts with new prefix
+                        print_success "Using command prefix: $user_prefix"
+                        echo "$user_prefix"
+                        return 0
+                        ;;
+                    1)
+                        # Still conflicts with external commands
+                        print_error "Prefix '$user_prefix' still has conflicts. Please choose a different prefix."
+                        ;;
+                    2)
+                        # All commands already exist and are our tool
+                        print_success "Commands with prefix '$user_prefix' are already set up for this tool."
+                        echo "$user_prefix"
+                        return 0
+                        ;;
+                esac
+            done
+            ;;
+        2)
+            # All commands already exist and are our tool
+            print_info "Commands with prefix '$default_prefix' are already set up for this tool."
+            echo "$default_prefix"
+            return 0
+            ;;
+    esac
 }
 
 # Create shell aliases
@@ -220,12 +274,50 @@ create_aliases() {
     local config_file="$2"
     local prefix="$3"
 
+    # Check if all commands are already set up for this tool
+    check_command_conflicts "$prefix"
+    local conflict_status=$?
+
+    if [[ $conflict_status -eq 2 ]]; then
+        print_info "All commands with prefix '$prefix' are already set up for this tool, skipping alias creation"
+        return 0
+    fi
+
     print_info "Creating shell aliases with prefix: $prefix..."
 
-    # Check if aliases already exist
+    # Check if aliases already exist in config file and point to our tool
     if grep -q "# Android Proxy Setter aliases" "$config_file" 2>/dev/null; then
-        print_info "Aliases already exist in $config_file, skipping creation"
-        return 0
+        # Check if the aliases in config file actually point to our tool
+        local all_aliases_correct=true
+        local commands=("$prefix" "$prefix-set" "$prefix-clear" "$prefix-view" "$prefix-restart")
+
+        for cmd in "${commands[@]}"; do
+            # Extract the alias definition from config file
+            local alias_line
+            alias_line=$(grep "^alias $cmd=" "$config_file" 2>/dev/null || echo "")
+
+            if [[ -n "$alias_line" ]]; then
+                # Check if the alias points to android_proxy_setter
+                if [[ "$alias_line" != *"android_proxy_setter"* ]]; then
+                    all_aliases_correct=false
+                    print_warning "Alias '$cmd' in config file does not point to android_proxy_setter"
+                    break
+                fi
+            else
+                all_aliases_correct=false
+                print_warning "Alias '$cmd' not found in config file"
+                break
+            fi
+        done
+
+        if [[ "$all_aliases_correct" == "true" ]]; then
+            print_info "Aliases already exist in $config_file and point to our tool, skipping creation"
+            return 0
+        else
+            print_warning "Aliases exist in $config_file but some don't point to our tool, will recreate them"
+            # Remove the existing alias section to recreate it
+            sed -i.bak '/^# Android Proxy Setter aliases/,/^alias.*restart.*android_proxy_setter/d' "$config_file" 2>/dev/null || true
+        fi
     fi
 
     case "$shell_type" in
