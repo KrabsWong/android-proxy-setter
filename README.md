@@ -37,6 +37,17 @@ This will:
 - `aps-view` - View current proxy settings
 - `aps-restart` - Restart ADB server
 
+#### Command screenshot
+<img width="400" alt="1" src="https://github.com/user-attachments/assets/de219444-83ed-4914-ab6d-14caf20af05e" />
+<br />
+<img width="400" alt="2" src="https://github.com/user-attachments/assets/add72354-1eb7-4bb5-a298-2043071cb923" />
+<br />
+<img width="400" alt="3" src="https://github.com/user-attachments/assets/1e185c38-2041-4197-b035-a04b688c51cc" />
+<br />
+<img width="400" alt="4" src="https://github.com/user-attachments/assets/ca2b6572-8f01-4e73-8742-50c78dddc7d5" />
+<br />
+<img width="400" alt="5" src="https://github.com/user-attachments/assets/6dd3f30a-3503-44d5-83f9-dc1df09c79ba" />
+
 ### Command Line Arguments
 
 - `-p, --port <PORT>`: Set the proxy port (default is 8083)
