@@ -119,3 +119,4 @@ help:
 	@echo "  aps-clear         - Clear proxy directly"
 	@echo "  aps-view          - View current proxy settings"
 	@echo "  aps-restart       - Restart ADB server"
+	@echo "  aps-help          - Show available commands"

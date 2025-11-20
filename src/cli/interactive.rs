@@ -75,20 +75,10 @@ fn run_interactive_mode(current_proxy_setting: String, args: Args) -> AppResult<
 }
 
 /// Show available commands and aliases
-fn show_available_commands() -> AppResult<()> {
+pub fn show_available_commands() -> AppResult<()> {
     use colored::*;
 
     println!("\n{}", "=== Android Proxy Setter - Available Commands ===".green().bold());
-    println!("\n{}", "Main executable:".blue());
-    println!("  android_proxy_setter              - Interactive mode");
-    println!("  android_proxy_setter --help       - Show help");
-    println!("  android_proxy_setter --help-commands - Show this help");
-
-    println!("\n{}", "Direct commands:".blue());
-    println!("  android_proxy_setter --set        - Set proxy directly");
-    println!("  android_proxy_setter --clear      - Clear proxy directly");
-    println!("  android_proxy_setter --restart-adb - Restart ADB server");
-    println!("  android_proxy_setter --view         - View current proxy settings");
 
     println!("\n{}", "Shell aliases (after installation):".yellow());
     println!("  aps                               - Interactive mode");

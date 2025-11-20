@@ -15,14 +15,17 @@ use crate::config::args::parse_args;
 use crate::error::AppResult;
 use crate::adb::device::{check_adb_availability, get_connected_devices, is_adb_running, restart_adb_server};
 use crate::proxy::manager::{get_proxy_info, view_proxy_direct};
-use crate::cli::run_cli_mode;
+use crate::cli::{run_cli_mode, show_available_commands};
 
 fn main() -> AppResult<()> {
     // Parse command-line arguments
     let args = parse_args();
 
-    // For view-only mode, skip all initialization and directly show proxy info
-    if args.view {
+    // For view-only mode or help-commands mode, skip all initialization
+    if args.view || args.help_commands {
+        if args.help_commands {
+            return show_help_commands_only();
+        }
         return view_proxy_only();
     }
 
@@ -93,5 +96,10 @@ fn get_current_proxy_setting() -> AppResult<String> {
 /// View proxy settings only, without any initialization checks
 fn view_proxy_only() -> AppResult<()> {
     view_proxy_direct()
+}
+
+/// Show help commands only, without any initialization checks
+fn show_help_commands_only() -> AppResult<()> {
+    show_available_commands()
 }
 

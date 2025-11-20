@@ -147,7 +147,7 @@ add_to_path() {
 # Check for command conflicts and identify existing tool commands
 check_command_conflicts() {
     local prefix="$1"
-    local commands=("$prefix" "$prefix-set" "$prefix-clear" "$prefix-view" "$prefix-restart")
+    local commands=("$prefix" "$prefix-set" "$prefix-clear" "$prefix-view" "$prefix-restart" "$prefix-help")
     local conflicts=()
     local existing_tool_commands=()
     local current_tool_path="$HOME/.local/bin/android_proxy_setter"
@@ -166,8 +166,8 @@ check_command_conflicts() {
 
             # Check if it's a function that calls our tool
             local func_def
-            func_def=$(type "$cmd" 2>/dev/null | grep -q "android_proxy_setter" && echo "found" || echo "")
-            if [[ -n "$func_def" ]]; then
+            func_def=$(type "$cmd" 2>/dev/null)
+            if [[ "$func_def" == *"android_proxy_setter"* ]]; then
                 is_our_tool=true
             fi
 
@@ -287,34 +287,49 @@ create_aliases() {
 
     # Check if aliases already exist in config file and point to our tool
     if grep -q "# Android Proxy Setter aliases" "$config_file" 2>/dev/null; then
-        # Check if the aliases in config file actually point to our tool
-        local all_aliases_correct=true
-        local commands=("$prefix" "$prefix-set" "$prefix-clear" "$prefix-view" "$prefix-restart")
+        # Check if the aliases/functions in config file actually point to our tool
+        local all_commands_correct=true
+        local commands=("$prefix" "$prefix-set" "$prefix-clear" "$prefix-view" "$prefix-restart" "$prefix-help")
 
         for cmd in "${commands[@]}"; do
-            # Extract the alias definition from config file
+            # Check if it's an alias
             local alias_line
             alias_line=$(grep "^alias $cmd=" "$config_file" 2>/dev/null || echo "")
 
             if [[ -n "$alias_line" ]]; then
                 # Check if the alias points to android_proxy_setter
                 if [[ "$alias_line" != *"android_proxy_setter"* ]]; then
-                    all_aliases_correct=false
+                    all_commands_correct=false
                     print_warning "Alias '$cmd' in config file does not point to android_proxy_setter"
                     break
                 fi
             else
-                all_aliases_correct=false
-                print_warning "Alias '$cmd' not found in config file"
-                break
+                # Check if it's a function
+                local func_line
+                func_line=$(grep "^${prefix}-help()" "$config_file" 2>/dev/null || echo "")
+
+                if [[ -n "$func_line" ]]; then
+                    # Check if the function calls android_proxy_setter
+                    local func_body
+                    func_body=$(sed -n "/^${prefix}-help()/,/^}/p" "$config_file" 2>/dev/null || echo "")
+                    if [[ "$func_body" != *"android_proxy_setter"* ]]; then
+                        all_commands_correct=false
+                        print_warning "Function '$cmd' in config file does not call android_proxy_setter"
+                        break
+                    fi
+                else
+                    all_commands_correct=false
+                    print_warning "Command '$cmd' not found in config file"
+                    break
+                fi
             fi
         done
 
-        if [[ "$all_aliases_correct" == "true" ]]; then
-            print_info "Aliases already exist in $config_file and point to our tool, skipping creation"
+        if [[ "$all_commands_correct" == "true" ]]; then
+            print_info "Commands already exist in $config_file and point to our tool, skipping creation"
             return 0
         else
-            print_warning "Aliases exist in $config_file but some don't point to our tool, will recreate them"
+            print_warning "Commands exist in $config_file but some don't point to our tool, will recreate them"
             # Remove the existing alias section to recreate it
             sed -i.bak '/^# Android Proxy Setter aliases/,/^alias.*restart.*android_proxy_setter/d' "$config_file" 2>/dev/null || true
         fi
@@ -330,6 +345,7 @@ alias ${prefix}-set='android_proxy_setter --set'
 alias ${prefix}-clear='android_proxy_setter --clear'
 alias ${prefix}-view='android_proxy_setter --view'
 alias ${prefix}-restart='android_proxy_setter --restart-adb'
+${prefix}-help() { android_proxy_setter --help-commands; }
 EOF
             ;;
         fish)
@@ -341,11 +357,12 @@ alias ${prefix}-set='android_proxy_setter --set'
 alias ${prefix}-clear='android_proxy_setter --clear'
 alias ${prefix}-view='android_proxy_setter --view'
 alias ${prefix}-restart='android_proxy_setter --restart-adb'
+alias ${prefix}-help='android_proxy_setter --help-commands'
 EOF
             ;;
     esac
 
-    print_success "Created aliases: ${prefix}, ${prefix}-set, ${prefix}-clear, ${prefix}-view, ${prefix}-restart"
+    print_success "Created aliases: ${prefix}, ${prefix}-set, ${prefix}-clear, ${prefix}-view, ${prefix}-restart, ${prefix}-help"
 }
 
 # Main installation function
@@ -391,6 +408,7 @@ main() {
     print_success "  ${prefix}-clear     - Clear proxy directly"
     print_success "  ${prefix}-view      - View current proxy settings"
     print_success "  ${prefix}-restart   - Restart ADB server"
+    print_success "  ${prefix}-help      - Show available commands"
     print_success ""
     print_success "To start using immediately, run:"
     print_success "  source $config_file"
