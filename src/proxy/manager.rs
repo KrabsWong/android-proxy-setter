@@ -1,194 +1,194 @@
 //! Proxy management operations
 
+use std::net::IpAddr;
 use std::thread;
 use std::time::Duration;
-use colored::*;
+
+use dialoguer::console::style;
+use local_ip_address::local_ip;
+
+use crate::adb::commands::{
+    clear_proxy as adb_clear_proxy, get_proxy as adb_get_proxy, set_proxy as adb_set_proxy,
+};
 use crate::error::{AppError, AppResult};
-use crate::adb::commands::{AdbCommand, execute_adb_command, execute_adb_command_string};
-use crate::proxy::settings::ProxySettings;
 
-/// Set proxy on Android device
-pub fn set_proxy(settings: &ProxySettings) -> AppResult<()> {
-    let proxy_string = settings.to_proxy_string();
+const VERIFY_ATTEMPTS: usize = 3;
+const VERIFY_RETRY_DELAY: Duration = Duration::from_millis(100);
 
-    println!(
-        "Preparing to set Android device proxy to {}:{}",
-        settings.ip.green(),
-        settings.port.to_string().green()
-    );
+/// Set proxy on one Android device and verify the resulting value.
+pub fn set_proxy(proxy: &str, device: &str) -> AppResult<()> {
+    let previous = get_current_proxy_setting(device)?;
 
-    // Clear existing proxy settings first
-    println!("Clearing existing proxy settings...");
-    let _ = clear_proxy_internal(); // Ignore errors for clearing
-
-    // Wait briefly to ensure clearing is complete
-    thread::sleep(Duration::from_millis(500));
-
-    // Set new proxy
-    println!(
-        "Setting new proxy to {}:{}",
-        settings.ip.green(),
-        settings.port.to_string().green()
-    );
-
-    execute_adb_command(AdbCommand::SetProxy(proxy_string.clone()))?;
-
-    // Wait for setting to take effect
-    thread::sleep(Duration::from_millis(500));
-
-    // Verify proxy settings
-    verify_proxy_settings(&proxy_string)?;
+    println!("Setting Android proxy to {}", style(proxy).green());
+    let operation = adb_set_proxy(proxy, device).and_then(|_| verify_proxy_value(proxy, device));
+    if let Err(operation_error) = operation {
+        if let Err(rollback_error) = restore_proxy(&previous, device) {
+            return Err(AppError::ProxyRollbackFailed {
+                operation_error: operation_error.to_string(),
+                rollback_error: rollback_error.to_string(),
+            });
+        }
+        return Err(operation_error);
+    }
 
     println!(
         "{}",
-        "✅ Successfully set Android device proxy!".green().bold()
+        style("✅ Android proxy set successfully.").green().bold()
     );
-
     Ok(())
 }
 
-/// Clear proxy settings on Android device
-pub fn clear_proxy() -> AppResult<()> {
-    println!("{}", "Clearing Android device proxy settings...".yellow());
+/// Clear proxy settings on one Android device and verify the resulting value.
+pub fn clear_proxy(device: &str) -> AppResult<()> {
+    println!("{}", style("Clearing Android proxy settings...").yellow());
+    adb_clear_proxy(device)?;
 
-    clear_proxy_internal()?;
-
-    // Wait for clearing to take effect
-    thread::sleep(Duration::from_millis(500));
-
-    // Verify proxy is cleared
-    verify_proxy_cleared()?;
+    let actual = read_proxy_until(device, is_proxy_unset)?;
+    if !is_proxy_unset(&actual) {
+        return Err(AppError::ProxyVerificationFailed {
+            expected: "not set".to_string(),
+            actual,
+        });
+    }
 
     println!(
         "{}",
-        "✅ Successfully cleared Android device proxy!".green().bold()
+        style("✅ Android proxy cleared successfully.")
+            .green()
+            .bold()
     );
-
     Ok(())
 }
 
-/// View current proxy settings
-pub fn view_proxy() -> AppResult<()> {
-    println!(
-        "{}",
-        "Checking current Android device proxy settings...".blue()
-    );
-
-    let proxy_setting = get_current_proxy_setting()?;
-
-    println!("\n{}", "=== Current Proxy Settings ===".blue().bold());
-    if proxy_setting.is_empty() || proxy_setting == ":0" {
-        println!("Global HTTP Proxy: {}", "Not set".red());
-    } else {
-        // Split the proxy setting into IP and port
-        if let Some((ip, port)) = proxy_setting.split_once(':') {
-            println!("Global HTTP Proxy: {}", proxy_setting.green());
-            println!("IP Address: {}", ip.green());
-            println!("Port: {}", port.green());
-        } else {
-            println!("Global HTTP Proxy: {}", proxy_setting.green());
-            println!("(Unable to parse IP and port separately)");
-        }
-    }
-
-    println!("\nPress Enter to continue...");
-    let mut input = String::new();
-    std::io::stdin().read_line(&mut input)?;
-
+pub fn view_proxy(device: &str) -> AppResult<()> {
+    let proxy = get_current_proxy_setting(device)?;
+    print_proxy(&proxy, "Current Android Proxy Settings:");
     Ok(())
 }
 
-/// View current proxy settings without waiting for user input
-pub fn view_proxy_direct() -> AppResult<()> {
-    let proxy_setting = get_current_proxy_setting()?;
+pub fn get_current_proxy_setting(device: &str) -> AppResult<String> {
+    adb_get_proxy(device)
+}
 
-    println!("Current Android Proxy Settings:");
-    if proxy_setting.is_empty() || proxy_setting == ":0" {
-        println!("Global HTTP Proxy: {}", "Not set".red());
-    } else {
-        // Split the proxy setting into IP and port
-        if let Some((ip, port)) = proxy_setting.split_once(':') {
-            println!("Global HTTP Proxy: {}", proxy_setting.green());
-            println!("IP Address: {}", ip.green());
-            println!("Port: {}", port.green());
-        } else {
-            println!("Global HTTP Proxy: {}", proxy_setting.green());
-        }
+pub fn resolve_proxy_address(custom_ip: Option<IpAddr>, port: u16) -> AppResult<String> {
+    let ip = match custom_ip {
+        Some(ip) => ip,
+        None => local_ip().map_err(|error| AppError::LocalIpError {
+            reason: error.to_string(),
+        })?,
+    };
+
+    Ok(match ip {
+        IpAddr::V4(ip) => format!("{ip}:{port}"),
+        IpAddr::V6(ip) => format!("[{ip}]:{port}"),
+    })
+}
+
+fn verify_proxy_value(expected: &str, device: &str) -> AppResult<()> {
+    let actual = read_proxy_until(device, |actual| actual == expected)?;
+    if actual != expected {
+        return Err(AppError::ProxyVerificationFailed {
+            expected: expected.to_string(),
+            actual,
+        });
     }
 
+    println!("Verified proxy setting: {}", style(actual).green());
     Ok(())
 }
 
-/// Get proxy information as a string (for GUI mode)
-pub fn get_proxy_info() -> AppResult<String> {
-    let proxy_setting = get_current_proxy_setting()?;
-
-    let mut info = String::from("Current Proxy Settings:\n");
-    if proxy_setting.is_empty() || proxy_setting == ":0" {
-        info.push_str("Global HTTP Proxy: Not set");
+fn restore_proxy(previous: &str, device: &str) -> AppResult<()> {
+    if is_proxy_unset(previous) {
+        adb_clear_proxy(device)?;
+        let actual = read_proxy_until(device, is_proxy_unset)?;
+        if !is_proxy_unset(&actual) {
+            return Err(AppError::ProxyVerificationFailed {
+                expected: "not set".to_string(),
+                actual,
+            });
+        }
     } else {
-        // Split the proxy setting into IP and port
-        if let Some((ip, port)) = proxy_setting.split_once(':') {
-            info.push_str(&format!("Global HTTP Proxy: {}\n", proxy_setting));
-            info.push_str(&format!("IP Address: {}\n", ip));
-            info.push_str(&format!("Port: {}", port));
-        } else {
-            info.push_str(&format!("Global HTTP Proxy: {}\n", proxy_setting));
-            info.push_str("(Unable to parse IP and port separately)");
+        adb_set_proxy(previous, device)?;
+        verify_proxy_value(previous, device)?;
+    }
+    Ok(())
+}
+
+fn read_proxy_until(device: &str, matches_expected: impl Fn(&str) -> bool) -> AppResult<String> {
+    let mut last_value = String::new();
+    for attempt in 0..VERIFY_ATTEMPTS {
+        last_value = get_current_proxy_setting(device)?;
+        if matches_expected(&last_value) {
+            break;
+        }
+        if attempt + 1 < VERIFY_ATTEMPTS {
+            thread::sleep(VERIFY_RETRY_DELAY);
+        }
+    }
+    Ok(last_value)
+}
+
+fn is_proxy_unset(proxy: &str) -> bool {
+    matches!(proxy.trim(), "" | ":0" | "null")
+}
+
+fn split_proxy(proxy: &str) -> Option<(&str, &str)> {
+    let (host, port) = proxy.rsplit_once(':')?;
+    let host = host
+        .strip_prefix('[')
+        .and_then(|value| value.strip_suffix(']'))
+        .unwrap_or(host);
+    Some((host, port))
+}
+
+fn print_proxy(proxy: &str, heading: &str) {
+    println!("\n{}", style(heading).blue().bold());
+    if is_proxy_unset(proxy) {
+        println!("Global HTTP Proxy: {}", style("Not set").red());
+        return;
+    }
+
+    println!("Global HTTP Proxy: {}", style(proxy).green());
+    if let Some((ip, port)) = split_proxy(proxy) {
+        println!("IP Address: {}", style(ip).green());
+        println!("Port: {}", style(port).green());
+    } else {
+        println!("{}", style("Unable to parse the proxy address.").yellow());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn recognizes_android_unset_values() {
+        for value in ["", ":0", "null", " null\n"] {
+            assert!(is_proxy_unset(value));
         }
     }
 
-    Ok(info)
-}
-
-// Internal helper functions
-
-fn clear_proxy_internal() -> AppResult<()> {
-    execute_adb_command(AdbCommand::ClearProxy)
-        .map_err(|e| AppError::proxy_clear_failed(e.to_string()))
-        .map(|_| ())
-}
-
-fn get_current_proxy_setting() -> AppResult<String> {
-    execute_adb_command_string(AdbCommand::GetProxy)
-        .map_err(|e| AppError::proxy_get_failed(e.to_string()))
-}
-
-fn verify_proxy_settings(expected_proxy: &str) -> AppResult<()> {
-    println!("Verifying proxy settings...");
-    let current_proxy = get_current_proxy_setting()?;
-
-    if current_proxy == expected_proxy {
-        println!("Current proxy settings: {}", current_proxy.green());
-    } else {
-        println!(
-            "{}",
-            "⚠️ Proxy settings may be incorrect, please verify manually"
-                .yellow()
-                .bold()
+    #[test]
+    fn splits_ipv4_and_ipv6_proxies() {
+        assert_eq!(
+            split_proxy("192.168.1.2:8017"),
+            Some(("192.168.1.2", "8017"))
         );
-        println!("Expected: {}", expected_proxy.green());
-        println!("Actual: {}", current_proxy.yellow());
-    }
-
-    Ok(())
-}
-
-fn verify_proxy_cleared() -> AppResult<()> {
-    println!("Verifying proxy settings...");
-    let current_proxy = get_current_proxy_setting()?;
-
-    if current_proxy.is_empty() || current_proxy == ":0" {
-        println!("Current proxy settings: {}", "Not set".green());
-    } else {
-        println!("Current proxy settings: {}", current_proxy);
-        println!(
-            "{}",
-            "⚠️ Proxy settings may not be cleared properly, please verify manually"
-                .yellow()
-                .bold()
+        assert_eq!(
+            split_proxy("[2001:db8::1]:8017"),
+            Some(("2001:db8::1", "8017"))
         );
     }
 
-    Ok(())
+    #[test]
+    fn formats_ipv4_and_ipv6_proxy_addresses() {
+        assert_eq!(
+            resolve_proxy_address(Some("192.168.1.2".parse().unwrap()), 8017).unwrap(),
+            "192.168.1.2:8017"
+        );
+        assert_eq!(
+            resolve_proxy_address(Some("2001:db8::1".parse().unwrap()), 8017).unwrap(),
+            "[2001:db8::1]:8017"
+        );
+    }
 }

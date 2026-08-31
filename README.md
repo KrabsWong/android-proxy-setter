@@ -1,112 +1,62 @@
-# Android Proxy Setting Tool
+# Android Proxy Setter
 
-A command-line tool written in Rust to manage HTTP proxy settings on connected Android devices through ADB. The tool provides both interactive CLI and direct command-line options for proxy management.
+A Rust command-line tool for managing the global HTTP proxy on an Android device through ADB. It supports an interactive menu and direct commands for scripts.
 
 ## Prerequisites
 
-- Rust development environment installed
-- ADB installed and added to system PATH
-- Android device connected to the computer with USB debugging enabled
+- Rust toolchain
+- ADB available on `PATH`
+- An Android device with USB debugging enabled
 
 ## Installation
 
-### Quick Installation (Recommended)
-
 ```bash
-# Clone the repository
-git clone https://github.com/KrabsWong/android_proxy_setter.git
-cd android_proxy_setter
-
-# Build and install to your PATH
+git clone https://github.com/KrabsWong/android-proxy-setter.git
+cd android-proxy-setter
 make install
 ```
 
-This will:
-- Build the release version
-- Install the binary to `~/.local/bin/`
-- Add the directory to your PATH
-- Create convenient shell aliases
+The installer builds the release binary, installs it to `~/.local/bin`, updates the active Bash, Zsh, or Fish configuration, and creates the `aps` aliases. Restart the terminal after installation, or source the configuration file printed by the installer.
 
 ## Usage
 
-### Available Commands
-- `aps-help` - Show available commands and aliases
-- `aps` - Interactive mode
-- `aps-set` - Set proxy directly
-- `aps-clear` - Clear proxy directly
-- `aps-view` - View current proxy settings
-- `aps-restart` - Restart ADB server
+Run `aps` to open the interactive menu. Use `↑`/`↓` to select an action, `Enter` to run it, and `Esc` or `q` to cancel. The program exits after one action.
 
-#### Command screenshot
-<img width="400" alt="1" src="https://github.com/user-attachments/assets/de219444-83ed-4914-ab6d-14caf20af05e" />
-<br />
-<img width="400" alt="2" src="https://github.com/user-attachments/assets/add72354-1eb7-4bb5-a298-2043071cb923" />
-<br />
-<img width="400" alt="3" src="https://github.com/user-attachments/assets/1e185c38-2041-4197-b035-a04b688c51cc" />
-<br />
-<img width="400" alt="4" src="https://github.com/user-attachments/assets/ca2b6572-8f01-4e73-8742-50c78dddc7d5" />
-<br />
-<img width="400" alt="5" src="https://github.com/user-attachments/assets/6dd3f30a-3503-44d5-83f9-dc1df09c79ba" />
+The installer also creates these direct aliases:
 
-### Command Line Arguments
+- `aps-set` — set the proxy
+- `aps-clear` — clear the proxy
+- `aps-view` — view the current proxy
+- `aps-restart` — restart the ADB server
+- `aps-help` — show the command summary
 
-- `-p, --port <PORT>`: Set the proxy port (default is 8083)
-- `-i, --ip <IP>`: Manually specify the IP address (default is to automatically get the local IP)
-- `-s, --set`: Skip interactive mode and directly set proxy
-- `-c, --clear`: Skip interactive mode and directly clear proxy
-- `--restart-adb`: Skip interactive mode and directly restart ADB server
-- `--view`: Skip interactive mode and directly view proxy settings
-- `--help-commands`: Show available commands and aliases
-- `-h, --help`: Display help information
-- `-V, --version`: Display version information
+### Options
 
-### Alternative Method to Clear Proxy Settings
+- `-p, --port <PORT>` — proxy port; defaults to `8017`
+- `-i, --ip <IP>` — proxy IP; automatically detects the local IP when omitted
+- `-d, --device <SERIAL>` — target device; required when multiple ready devices are connected
+- `-s, --set` — set the proxy without opening the menu
+- `-c, --clear` — clear the proxy without opening the menu
+- `--view` — show the current proxy without opening the menu
+- `--restart-adb` — restart the ADB server
+- `--help-commands` — show the installed aliases and common options
 
-If you prefer to use ADB directly to clear proxy settings, you can run:
+All options can also be passed to `aps`. For example:
 
 ```bash
-adb shell settings put global http_proxy :0
+aps --set --ip 192.168.1.10 --port 8017 --device <SERIAL>
 ```
 
-## Project Architecture
+## Uninstallation
 
-This project has been refactored from a single-file architecture to a modular design:
-
-```
-src/
-├── main.rs              # Application entry point
-├── cli/
-│   ├── mod.rs           # CLI module exports
-│   └── interactive.rs   # Interactive mode implementation
-├── config/
-│   ├── mod.rs           # Configuration module exports
-│   └── args.rs          # Command-line argument parsing
-├── proxy/
-│   ├── mod.rs           # Proxy module exports
-│   ├── manager.rs       # Proxy management logic
-│   └── settings.rs      # Proxy settings handling
-└── adb/
-    ├── mod.rs           # ADB module exports
-    ├── device.rs        # Device management
-    └── commands.rs      # ADB command execution
+```bash
+make uninstall
 ```
 
-## Features
-
-- Automatic restart ADB
-- Automatic detection of local IP address
-- Support for multiple connected Android devices
-- Interactive CLI menu for easy proxy management
-- Direct command-line options for scripting and automation
-- Verification of proxy settings after changes
-- Colored output for better readability in CLI mode
-- Modular architecture for maintainability
-- Help command to show available aliases and options
-
-
-## Notes
+## Behavior and limitations
 
 - Ensure the Android device and computer are on the same network
-- Some Android devices may require different settings; this tool uses the most common global HTTP proxy setting method
+- Proxy changes are verified; a failed set operation attempts to restore the previous value
+- ADB commands time out instead of hanging indefinitely
+- The tool changes Android's `global http_proxy` setting
 - Some applications may ignore system proxy settings
-- This tool is now CLI-only and does not include GUI functionality

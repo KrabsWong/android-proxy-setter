@@ -1,82 +1,112 @@
-//! Device management and ADB availability checking
+//! Android device discovery and selection.
 
-use std::process::Command;
+use crate::adb::commands::list_devices;
 use crate::error::{AppError, AppResult};
-use crate::adb::commands::{AdbCommand, execute_adb_command_string};
-
-/// Check if ADB is available in the system PATH
-pub fn check_adb_availability() -> AppResult<String> {
-    let output = Command::new("adb")
-        .arg("version")
-        .output()
-        .map_err(|_| AppError::AdbNotFound)?;
-
-    if !output.status.success() {
-        return Err(AppError::AdbNotFound);
-    }
-
-    let version_output = String::from_utf8_lossy(&output.stdout);
-    let version_line = version_output
-        .lines()
-        .next()
-        .unwrap_or("Unknown")
-        .to_string();
-
-    Ok(version_line)
-}
 
 /// Get list of connected Android devices
-pub fn get_connected_devices() -> AppResult<Vec<String>> {
-    let output = execute_adb_command_string(AdbCommand::GetDevices)?;
+fn get_connected_devices() -> AppResult<Vec<String>> {
+    let output = list_devices()?;
 
-    let devices: Vec<String> = output
-        .lines()
-        .skip(1) // Skip header line
-        .filter(|line| !line.trim().is_empty() && !line.contains("List of devices attached"))
-        .map(|line| line.split('\t').next().unwrap_or(line).trim().to_string())
-        .filter(|line| !line.is_empty())
+    let entries = parse_device_entries(&output);
+    let devices: Vec<String> = entries
+        .iter()
+        .filter(|entry| entry.state == "device")
+        .map(|entry| entry.serial.clone())
         .collect();
 
     if devices.is_empty() {
-        return Err(AppError::NoDevicesConnected);
+        let details = if entries.is_empty() {
+            "adb returned no devices".to_string()
+        } else {
+            entries
+                .iter()
+                .map(|entry| format!("{}: {}", entry.serial, entry.state))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        return Err(AppError::NoDevicesConnected { details });
     }
 
     Ok(devices)
 }
 
-/// Check if ADB server is running
-pub fn is_adb_running() -> bool {
-    let output = Command::new("pgrep")
-        .arg("adb")
-        .output();
-
-    match output {
-        Ok(output) => {
-            let pids: Vec<u32> = String::from_utf8_lossy(&output.stdout)
-                .split_whitespace()
-                .filter_map(|s| s.parse().ok())
-                .collect();
-            !pids.is_empty()
-        }
-        Err(_) => false,
-    }
+#[derive(Debug, PartialEq)]
+struct DeviceEntry {
+    serial: String,
+    state: String,
 }
 
-/// Restart ADB server using the included shell script
-pub fn restart_adb_server() -> AppResult<()> {
-    const SCRIPT_CONTENT: &str = include_str!("../bin/resurrection_adb.sh");
+fn parse_device_entries(output: &str) -> Vec<DeviceEntry> {
+    output
+        .lines()
+        .skip_while(|line| !line.starts_with("List of devices attached"))
+        .skip(1)
+        .filter_map(|line| {
+            let mut columns = line.split_whitespace();
+            let serial = columns.next()?;
+            let state = columns.next()?;
+            Some(DeviceEntry {
+                serial: serial.to_string(),
+                state: state.to_string(),
+            })
+        })
+        .collect()
+}
 
-    let status = Command::new("sh")
-        .arg("-c")
-        .arg(SCRIPT_CONTENT)
-        .status()?;
+/// Resolve a usable device, requiring an explicit serial when more than one is ready.
+pub fn resolve_device(requested_serial: Option<&str>) -> AppResult<String> {
+    let devices = get_connected_devices()?;
 
-    if status.success() {
-        Ok(())
-    } else {
-        Err(AppError::adb_command_failed(
-            "restart ADB server",
-            std::io::Error::new(std::io::ErrorKind::Other, "Failed to restart ADB server")
-        ))
+    if let Some(serial) = requested_serial {
+        return devices
+            .into_iter()
+            .find(|device| device == serial)
+            .ok_or_else(|| AppError::DeviceNotAvailable {
+                serial: serial.to_string(),
+            });
+    }
+
+    if devices.len() > 1 {
+        return Err(AppError::MultipleDevicesConnected {
+            devices: devices.join(", "),
+        });
+    }
+
+    devices
+        .into_iter()
+        .next()
+        .ok_or_else(|| AppError::NoDevicesConnected {
+            details: "adb returned no devices".to_string(),
+        })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_device_states() {
+        let output = "List of devices attached\nready-1\tdevice product:foo\noffline-1\toffline\nunauthorized-1\tunauthorized\nready-2 device\n";
+        assert_eq!(
+            parse_device_entries(output),
+            vec![
+                DeviceEntry {
+                    serial: "ready-1".to_string(),
+                    state: "device".to_string(),
+                },
+                DeviceEntry {
+                    serial: "offline-1".to_string(),
+                    state: "offline".to_string(),
+                },
+                DeviceEntry {
+                    serial: "unauthorized-1".to_string(),
+                    state: "unauthorized".to_string(),
+                },
+                DeviceEntry {
+                    serial: "ready-2".to_string(),
+                    state: "device".to_string(),
+                },
+            ]
+        );
     }
 }

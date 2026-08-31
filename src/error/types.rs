@@ -8,43 +8,43 @@ pub type AppResult<T> = Result<T, AppError>;
 /// Main application error type
 #[derive(Error, Debug)]
 pub enum AppError {
-    #[error("ADB command failed: {command}")]
+    #[error("ADB command failed ({command}): {source}")]
     AdbCommandFailed {
         command: String,
         source: std::io::Error,
     },
 
+    #[error("ADB command timed out after {seconds}s: {command}")]
+    AdbCommandTimedOut { command: String, seconds: u64 },
+
     #[error("ADB not found or not in PATH")]
     AdbNotFound,
 
-    #[error("No connected Android devices found")]
-    NoDevicesConnected,
+    #[error("No ready Android devices found ({details}); check the USB connection, debugging authorization, and `adb devices`")]
+    NoDevicesConnected { details: String },
+
+    #[error(
+        "Multiple Android devices are connected ({devices}); use --device <SERIAL> to choose one"
+    )]
+    MultipleDevicesConnected { devices: String },
+
+    #[error("Android device '{serial}' was not found or is not ready")]
+    DeviceNotAvailable { serial: String },
 
     #[error("Failed to get local IP address: {reason}")]
-    LocalIpError {
-        reason: String,
-    },
+    LocalIpError { reason: String },
 
-    #[error("Failed to clear proxy: {reason}")]
-    ProxyClearFailed {
-        reason: String,
-    },
+    #[error("Proxy verification failed: expected '{expected}', got '{actual}'")]
+    ProxyVerificationFailed { expected: String, actual: String },
 
-    #[error("Failed to get proxy settings: {reason}")]
-    ProxyGetFailed {
-        reason: String,
+    #[error("Proxy operation failed ({operation_error}); rollback also failed ({rollback_error})")]
+    ProxyRollbackFailed {
+        operation_error: String,
+        rollback_error: String,
     },
 
     #[error("I/O error: {source}")]
-    IoError {
-        source: std::io::Error,
-    },
-
-    #[error("UTF-8 conversion error: {source}")]
-    Utf8Error {
-        #[from]
-        source: std::string::FromUtf8Error,
-    },
+    IoError { source: std::io::Error },
 }
 
 impl From<std::io::Error> for AppError {
@@ -59,20 +59,6 @@ impl AppError {
         AppError::AdbCommandFailed {
             command: command.to_string(),
             source,
-        }
-    }
-
-    /// Create a new proxy clear failed error
-    pub fn proxy_clear_failed(reason: impl Into<String>) -> Self {
-        AppError::ProxyClearFailed {
-            reason: reason.into(),
-        }
-    }
-
-    /// Create a new proxy get failed error
-    pub fn proxy_get_failed(reason: impl Into<String>) -> Self {
-        AppError::ProxyGetFailed {
-            reason: reason.into(),
         }
     }
 }

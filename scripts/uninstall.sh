@@ -1,230 +1,98 @@
-#!/bin/bash
-
-# Android Proxy Setter Uninstallation Script
-# This script removes the tool from user's PATH and cleans up aliases
+#!/usr/bin/env bash
 
 set -euo pipefail
 
-# Color codes for output
-RED="\033[0;31m"
-GREEN="\033[0;32m"
-YELLOW="\033[1;33m"
-BLUE="\033[0;34m"
-NC="\033[0m" # No Color
+readonly GREEN='\033[0;32m'
+readonly BLUE='\033[0;34m'
+readonly NC='\033[0m'
+readonly BLOCK_START='# >>> Android Proxy Setter >>>'
+readonly BLOCK_END='# <<< Android Proxy Setter <<<'
+readonly BINARY_NAME='android_proxy_setter'
 
-# Function to print colored output
-print_info() {
-    echo -e "${BLUE}[INFO]${NC} $1"
-}
+info() { printf "%b[INFO]%b %s\n" "$BLUE" "$NC" "$*"; }
+success() { printf "%b[SUCCESS]%b %s\n" "$GREEN" "$NC" "$*"; }
 
-print_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
-}
-
-print_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
-}
-
-print_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
-}
-
-# Get the script directory
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_NAME="android-proxy-setter"
-BINARY_NAME="android_proxy_setter"
-
-# Detect user's shell
 detect_shell() {
-    local shell_name="${SHELL##*/}"
-    case "$shell_name" in
-        bash)
-            echo "bash"
-            ;;
-        zsh)
-            echo "zsh"
-            ;;
-        fish)
-            echo "fish"
-            ;;
+    case "${SHELL##*/}" in
+        bash|zsh|fish) printf '%s\n' "${SHELL##*/}" ;;
         *)
-            echo "bash"  # Default to bash
+            info "Unsupported shell '${SHELL##*/}'. Supported shells: bash, zsh, fish."
+            return 1
             ;;
     esac
 }
 
-# Get shell config file path
-get_shell_config() {
-    local shell_type="$1"
-    case "$shell_type" in
-        bash)
-            echo "$HOME/.bashrc"
-            ;;
-        zsh)
-            echo "$HOME/.zshrc"
-            ;;
-        fish)
-            echo "$HOME/.config/fish/config.fish"
-            ;;
+shell_config() {
+    case "$1" in
+        bash) printf '%s\n' "$HOME/.bashrc" ;;
+        zsh) printf '%s\n' "$HOME/.zshrc" ;;
+        fish) printf '%s\n' "$HOME/.config/fish/config.fish" ;;
     esac
 }
 
-# Get installation directory
-get_install_dir() {
-    echo "$HOME/.local/bin"
+remove_managed_block() {
+    local config_file="$1"
+    local temp_file config_target link_target
+    local symlink_count=0
+
+    [[ -f "$config_file" ]] || return 0
+    if ! awk -v start="$BLOCK_START" -v end="$BLOCK_END" '
+        $0 == start { if (managed) invalid = 1; managed = 1; next }
+        $0 == end { if (!managed) invalid = 1; managed = 0; next }
+        END { exit invalid || managed ? 1 : 0 }
+    ' "$config_file"; then
+        info "Managed block markers are incomplete in $config_file; shell configuration was left unchanged."
+        return 1
+    fi
+
+    config_target="$config_file"
+    while [[ -L "$config_target" ]]; do
+        symlink_count=$((symlink_count + 1))
+        [[ $symlink_count -le 20 ]] || {
+            info "Too many symbolic links while resolving $config_file; no changes were made."
+            return 1
+        }
+        link_target="$(readlink "$config_target")"
+        if [[ "$link_target" == /* ]]; then
+            config_target="$link_target"
+        else
+            config_target="$(dirname "$config_target")/$link_target"
+        fi
+    done
+    config_target="$(cd "$(dirname "$config_target")" && pwd -P)/$(basename "$config_target")"
+    temp_file="$(mktemp "${config_target}.tmp.XXXXXX")"
+    trap 'rm -f "${temp_file:-}"' RETURN
+    cp -p "$config_target" "$temp_file"
+    awk -v start="$BLOCK_START" -v end="$BLOCK_END" '
+        $0 == start { managed = 1; next }
+        $0 == end { managed = 0; next }
+        !managed { print }
+    ' "$config_file" > "$temp_file"
+    command mv "$temp_file" "$config_target"
+    trap - RETURN
 }
 
-# Remove binary
-remove_binary() {
-    local install_dir="$1"
-    local binary_path="$install_dir/$BINARY_NAME"
+main() {
+    local shell_type config_file install_dir binary_path
+    shell_type="$(detect_shell)"
+    config_file="$(shell_config "$shell_type")"
+    install_dir="$HOME/.local/bin"
+    binary_path="$install_dir/$BINARY_NAME"
+
+    remove_managed_block "$config_file"
 
     if [[ -f "$binary_path" ]]; then
         rm "$binary_path"
-        print_success "Removed binary: $binary_path"
+        success "Removed $binary_path."
     else
-        print_info "Binary not found: $binary_path"
-    fi
-}
-
-# Detect command prefix from config file
-detect_command_prefix() {
-    local shell_type="$1"
-    local config_file="$2"
-
-    if [[ ! -f "$config_file" ]]; then
-        echo "aps"  # Default prefix
-        return 0
+        info "Binary is already absent: $binary_path"
     fi
 
-    # Look for Android Proxy Setter aliases and extract the prefix
-    case "$shell_type" in
-        bash|zsh)
-            local alias_line
-            alias_line=$(grep "alias.*='android_proxy_setter'" "$config_file" | head -1)
-            if [[ -n "$alias_line" ]]; then
-                # Extract the command name before '='
-                echo "$alias_line" | sed -n 's/^alias \([^=]*\)=.*/\1/p'
-            else
-                echo "aps"  # Default prefix
-            fi
-            ;;
-        fish)
-            local alias_line
-            alias_line=$(grep "alias.*='android_proxy_setter'" "$config_file" | head -1)
-            if [[ -n "$alias_line" ]]; then
-                # Extract the command name after 'alias ' and before '='
-                echo "$alias_line" | sed -n 's/^alias \([^=]*\)=.*/\1/p'
-            else
-                echo "aps"  # Default prefix
-            fi
-            ;;
-    esac
+    success "Removed managed shell configuration from $config_file."
+
+    rmdir "$install_dir" 2>/dev/null || true
+
+    info "Restart your terminal or run: source $config_file"
 }
 
-# Remove from PATH and aliases
-remove_from_config() {
-    local shell_type="$1"
-    local config_file="$2"
-    local install_dir="$3"
-
-    if [[ ! -f "$config_file" ]]; then
-        print_info "Config file not found: $config_file"
-        return 0
-    fi
-
-    print_info "Cleaning up $config_file..."
-
-    # Detect the command prefix used during installation
-    local prefix
-    prefix=$(detect_command_prefix "$shell_type" "$config_file")
-    print_info "Detected command prefix: $prefix"
-
-    # Create a temporary file
-    local temp_file
-    temp_file=$(mktemp)
-
-    case "$shell_type" in
-        bash|zsh)
-            # Remove PATH entry and aliases
-            grep -v "export PATH=\"$install_dir:" "$config_file" | \
-            grep -v "# Android Proxy Setter aliases" | \
-            grep -v "alias $prefix=" | \
-            grep -v "alias $prefix-set=" | \
-            grep -v "alias $prefix-clear=" | \
-            grep -v "alias $prefix-view=" | \
-            grep -v "alias $prefix-restart=" > "$temp_file"
-            ;;
-        fish)
-            # Remove PATH entry and aliases
-            grep -v "set -gx PATH \"$install_dir\"" "$config_file" | \
-            grep -v "# Android Proxy Setter aliases" | \
-            grep -v "alias $prefix=" | \
-            grep -v "alias $prefix-set=" | \
-            grep -v "alias $prefix-clear=" | \
-            grep -v "alias $prefix-view=" | \
-            grep -v "alias $prefix-restart=" > "$temp_file"
-            ;;
-    esac
-
-    # Replace the original file
-    mv "$temp_file" "$config_file"
-
-    print_success "Removed configuration from $config_file"
-}
-
-# Check if installation directory is empty and remove if so
-cleanup_install_dir() {
-    local install_dir="$1"
-
-    if [[ -d "$install_dir" ]]; then
-        if [[ -z "$(ls -A "$install_dir")" ]]; then
-            rmdir "$install_dir"
-            print_success "Removed empty installation directory: $install_dir"
-        else
-            print_info "Installation directory not empty, keeping: $install_dir"
-        fi
-    fi
-}
-
-# Main uninstallation function
-main() {
-    print_info "Uninstalling Android Proxy Setter..."
-
-    # Detect shell
-    local shell_type
-    shell_type=$(detect_shell)
-    print_info "Detected shell: $shell_type"
-
-    # Get shell config file
-    local config_file
-    config_file=$(get_shell_config "$shell_type")
-    print_info "Using config file: $config_file"
-
-    # Get installation directory
-    local install_dir
-    install_dir=$(get_install_dir)
-
-    # Remove binary
-    remove_binary "$install_dir"
-
-    # Remove from config
-    remove_from_config "$shell_type" "$config_file" "$install_dir"
-
-    # Cleanup installation directory
-    cleanup_install_dir "$install_dir"
-
-    print_success ""
-    print_success "🗑️  Uninstallation completed successfully!"
-    print_success ""
-    print_success "The following have been removed:"
-    print_success "  - Binary: $install_dir/$BINARY_NAME"
-    print_success "  - PATH configuration"
-    print_success "  - Shell aliases"
-    print_success ""
-    print_success "To complete the cleanup, please restart your terminal"
-    print_success "or run: source $config_file"
-}
-
-# Run main function
 main "$@"
